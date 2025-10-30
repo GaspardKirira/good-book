@@ -8,3 +8,13 @@ public/
 .env.production
 request.log
 vendor/
+
+# Secrets & reports
+.env
+gitleaks-report.json
+*.pem
+*.key
+*.p12
+*.keystore
+*.jks
+*.crt
