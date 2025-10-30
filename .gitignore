@@ -7,14 +7,44 @@ public/
 .env.staging
 .env.production
 request.log
-vendor/
+# OS
+.DS_Store
+Thumbs.db
 
-# Secrets & reports
+# Editors / IDE
+.idea/
+.vscode/
+*.swp
+
+# PHP
+vendor/
+composer.phar
+# (Garde composer.lock versionné si c’est une app; ne pas l’ignorer)
+
+# Logs / Cache / Tests
+*.log
+logs/
+storage/
+cache/
+tmp/
+coverage/
+.phpunit.result.cache
+
+# Env & Secrets
 .env
-gitleaks-report.json
+.env.*
 *.pem
 *.key
 *.p12
 *.keystore
 *.jks
 *.crt
+*.der
+
+# Reports
+gitleaks-report.json
+
+# Node / Front
+node_modules/
+dist/
+build/
