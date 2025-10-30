@@ -67,6 +67,10 @@ merge:
 	git push origin $(BRANCH_MAIN)
 
 tag:
+	@# vérifie format VERSION vX.Y.Z
+	@if ! [[ "$(VERSION)" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$$ ]]; then \
+		echo "❌ VERSION must look like vX.Y.Z (got '$(VERSION)')"; exit 1; \
+	fi
 	@# refuse un tag déjà existant
 	if git rev-parse -q --verify "refs/tags/$(VERSION)" >/dev/null; then \
 		echo "❌ Tag $(VERSION) already exists."; \
@@ -76,7 +80,8 @@ tag:
 	git tag -a $(VERSION) -m "chore(release): $(VERSION)"
 	git push origin $(VERSION)
 
-release: preflight ensure-clean commit push merge tag VERSION=$(VERSION)
+# ✅ Corrigé : ne pas déclarer VERSION comme *dépendance* ici
+release: preflight ensure-clean commit push merge tag
 
 test:
 	@if [ -d build ]; then cd build && ctest --output-on-failure; else echo "ℹ️ No build dir; skipping tests"; fi
