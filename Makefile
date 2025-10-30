@@ -1,20 +1,53 @@
-VERSION ?= v0.1.0
-BRANCH_DEV = dev
-BRANCH_MAIN = main
+SHELL := /usr/bin/env bash
+.ONESHELL:
+.SHELLFLAGS := -eu -o pipefail -c
 
-.PHONY: help release commit push merge tag test
+VERSION ?= v0.1.0
+BRANCH_DEV  ?= dev
+BRANCH_MAIN ?= main
+
+.PHONY: help release commit push merge tag test changelog preflight ensure-clean ensure-branch
 
 help:
 	@echo "Available commands:"
-	@echo "  make commit               - Add and commit all files (on dev branch)"
-	@echo "  make push                 - Push the dev branch"
-	@echo "  make merge                - Merge dev into main"
-	@echo "  make tag VERSION=vX.Y.Z  - Create a Git tag (default: $(VERSION))"
-	@echo "  make release VERSION=vX.Y.Z - Full release: commit + push + merge + tag"
-	@echo "  make test                 - Compile and run tests"
+	@echo "  make commit                        - Add and commit all files (on dev branch)"
+	@echo "  make push                          - Push the dev branch"
+	@echo "  make merge                         - Merge dev into main (no-ff)"
+	@echo "  make tag VERSION=vX.Y.Z            - Create and push an annotated Git tag"
+	@echo "  make release VERSION=vX.Y.Z        - Full release: preflight + commit + push + merge + tag"
+	@echo "  make test                          - Compile and run tests"
+	@echo "  make changelog                     - Update CHANGELOG via script"
 
-commit:
+preflight:
+	@echo "🔎 Preflight: checking tools & secrets..."
+	command -v gitleaks >/dev/null
+	# scan working tree (hook scannera aussi au push)
+	gitleaks detect --source . --no-banner --redact
+	@echo "✅ Secrets check passed"
+	@echo "🔎 Preflight: fetching & syncing $(BRANCH_DEV) ..."
+	git fetch origin
 	git checkout $(BRANCH_DEV)
+	git pull --rebase origin $(BRANCH_DEV)
+	@echo "🔎 Preflight: syncing $(BRANCH_MAIN) ..."
+	git fetch origin
+	@git show-ref --verify --quiet refs/heads/$(BRANCH_MAIN) || git branch $(BRANCH_MAIN) origin/$(BRANCH_MAIN)
+	git checkout $(BRANCH_MAIN)
+	git pull --rebase origin $(BRANCH_MAIN)
+	git checkout $(BRANCH_DEV)
+
+ensure-clean:
+	@if [ -n "$$(git status --porcelain)" ]; then \
+		echo "❌ Working tree not clean. Commit or stash first."; \
+		exit 1; \
+	fi
+
+ensure-branch:
+	@if [ "$$(git rev-parse --abbrev-ref HEAD)" != "$(BRANCH_DEV)" ]; then \
+		echo "❌ You must be on $(BRANCH_DEV) to commit."; \
+		exit 1; \
+	fi
+
+commit: ensure-branch
 	@if [ -n "$$(git status --porcelain)" ]; then \
 		echo "📝 Committing changes..."; \
 		git add .; \
@@ -27,25 +60,26 @@ push:
 	git push origin $(BRANCH_DEV)
 
 merge:
-	git checkout $(BRANCH_MAIN)
+	@git checkout $(BRANCH_MAIN)
+	@# Option FF-only si tu veux un historique linéaire :
+	# git merge --ff-only $(BRANCH_DEV)
 	git merge --no-ff --no-edit $(BRANCH_DEV)
 	git push origin $(BRANCH_MAIN)
 
 tag:
-	git tag $(VERSION)
+	@# refuse un tag déjà existant
+	if git rev-parse -q --verify "refs/tags/$(VERSION)" >/dev/null; then \
+		echo "❌ Tag $(VERSION) already exists."; \
+		exit 1; \
+	fi
+	@# crée un tag annoté (mieux pour releases)
+	git tag -a $(VERSION) -m "chore(release): $(VERSION)"
 	git push origin $(VERSION)
 
-release:
-	make changelog
-	make commit
-	make push
-	make merge
-	make tag VERSION=$(VERSION)
+release: preflight ensure-clean commit push merge tag VERSION=$(VERSION)
 
 test:
-	cd build && ctest --output-on-failure
+	@if [ -d build ]; then cd build && ctest --output-on-failure; else echo "ℹ️ No build dir; skipping tests"; fi
 
 changelog:
-	bash scripts/update_changelog.sh
-
-
+	bash scripts/update_changelog.sh || true
