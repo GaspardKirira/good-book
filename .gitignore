@@ -1,7 +1,9 @@
 cmd.md
 .vscode/
 .git/
-public/
+public/images/
+public/vendor/
+public/.well-known/
 .env
 .env.local
 .env.staging
