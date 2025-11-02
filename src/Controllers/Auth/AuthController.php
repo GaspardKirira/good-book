@@ -391,10 +391,6 @@ class AuthController extends Controller
 
             $resetLink = "https://softadastra.com/auth/reset-password?token=" . $resetToken;
 
-            // ✅ Utilisation de la classe EmailService
-            $emailService = new EmailService();
-            $emailService->sendResetPasswordEmail($user, $resetLink);
-
             $_SESSION['message'] = "A verification code has been sent to your email address.";
         } catch (Exception $e) {
             $_SESSION['message'] = "Erreur : " . $e->getMessage();
