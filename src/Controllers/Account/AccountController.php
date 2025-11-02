@@ -7,7 +7,6 @@ use Softadastra\Controllers\Controller;
 use Domain\Users\UserRepository;
 use Domain\Seller\SellerProfilesRepository;
 use Domain\Seller\SellerVerificationRepository;
-use Domain\Shops\SavedShopsRepository;
 use PDO;
 
 class AccountController extends Controller
@@ -17,17 +16,12 @@ class AccountController extends Controller
 
     private UserRepository $users;
     private PDO $db;
-    private SellerProfilesRepository $sellerProfiles;
-    private SellerVerificationRepository $sellerVerification;
 
     public function __construct()
     {
         parent::__construct();
         $this->users = new UserRepository();
         $this->db   = $this->users->getDb();
-
-        $this->sellerProfiles     = new SellerProfilesRepository($this->db);
-        $this->sellerVerification = new SellerVerificationRepository($this->db);
     }
 
     public function legacyAccount()
@@ -42,13 +36,8 @@ class AccountController extends Controller
             $userEntity = $this->getUserEntity();
             $uid = (int)$userEntity->getId();
 
-            $isSellerVerified    = $this->sellerProfiles->isVerified($uid);
-            $hasOpenVerification = $this->sellerVerification->hasOpenRequest($uid);
-
             return $this->view($this->path . 'account', compact(
                 'userEntity',
-                'isSellerVerified',
-                'hasOpenVerification'
             ));
         } catch (Exception $e) {
             return $this->errors($this->errors . 'errors', ['errorMessage' => $e->getMessage()]);
