@@ -21,7 +21,6 @@ help:
 preflight:
 	@echo "🔎 Preflight: checking tools & secrets..."
 	command -v gitleaks >/dev/null
-	# scan working tree (hook scannera aussi au push)
 	gitleaks detect --source . --no-banner --redact
 	@echo "✅ Secrets check passed"
 	@echo "🔎 Preflight: fetching & syncing $(BRANCH_DEV) ..."
@@ -61,22 +60,23 @@ push:
 
 merge:
 	@git checkout $(BRANCH_MAIN)
-	@# Option FF-only si tu veux un historique linéaire :
-	# git merge --ff-only $(BRANCH_DEV)
 	git merge --no-ff --no-edit $(BRANCH_DEV)
 	git push origin $(BRANCH_MAIN)
+	@git checkout $(BRANCH_DEV)
 
 tag:
-	@# refuse un tag déjà existant
-	if git rev-parse -q --verify "refs/tags/$(VERSION)" >/dev/null; then \
-		echo "❌ Tag $(VERSION) already exists."; \
-		exit 1; \
+	@if ! [[ "$(VERSION)" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$$ ]]; then \
+		echo "❌ VERSION must look like vX.Y.Z (got '$(VERSION)')"; exit 1; \
 	fi
-	@# crée un tag annoté (mieux pour releases)
+	if git rev-parse -q --verify "refs/tags/$(VERSION)" >/dev/null; then \
+		echo "❌ Tag $(VERSION) already exists."; exit 1; \
+	fi
 	git tag -a $(VERSION) -m "chore(release): $(VERSION)"
 	git push origin $(VERSION)
 
-release: preflight ensure-clean commit push merge tag VERSION=$(VERSION)
+# ✅ Important: VERSION n'est PAS une dépendance du target
+#    et ensure-clean vient APRÈS commit pour valider qu'il ne reste rien.
+release: preflight commit ensure-clean push merge tag
 
 test:
 	@if [ -d build ]; then cd build && ctest --output-on-failure; else echo "ℹ️ No build dir; skipping tests"; fi
