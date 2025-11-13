@@ -1,447 +1,332 @@
 <?php
 
-namespace Softadastra\Controllers;
+declare(strict_types=1);
 
-use Domain\Users\UserRepository;
-use Exception;
-use Softadastra\Application\Http\RedirectionHelper;
-use Softadastra\Application\Image\PhotoHandler;
-use Softadastra\Config\Database;
-use Softadastra\Model\GetUserCookie;
-use Softadastra\Model\JWT;
+namespace App\Controllers;
 
-class Controller
+use Ivi\Http\Request;
+use Ivi\Http\HtmlResponse;
+use Ivi\Http\JsonResponse;
+use Ivi\Http\TextResponse;
+use Ivi\Http\RedirectResponse;
+use Ivi\Core\View\ViewNotFoundException;
+
+/**
+ * Class Controller
+ *
+ * @package App\Controllers
+ *
+ * @brief Base controller class for all HTTP controllers in an Ivi.php application.
+ *
+ * This abstract base class defines a unified interface for rendering views,
+ * returning responses, and managing layouts. All application controllers
+ * should extend this class to ensure consistent behavior and predictable
+ * response handling across the framework.
+ *
+ * ### Design Philosophy
+ * - **Minimal & Explicit** — Keeps logic simple and transparent.
+ * - **Consistent Response Types** — Always returns typed responses
+ *   (`HtmlResponse`, `JsonResponse`, `TextResponse`, `RedirectResponse`).
+ * - **Framework Integration** — Provides built-in helpers that interact
+ *   seamlessly with the Ivi.php HTTP and View layers.
+ *
+ * ### Responsibilities
+ * - Render view templates (`render()` / `view()`)
+ * - Manage layout inheritance (`setLayout()`)
+ * - Provide helper methods for HTML, JSON, plain text, and redirects
+ * - Detect and handle AJAX/JSON requests automatically
+ * - Abstract away filesystem and buffer management for views
+ *
+ * ### Rendering Flow
+ * 1. The `view()` method resolves a dot-notation path (e.g., `"user.index"`)
+ *    into a PHP file under `/views/`.
+ * 2. The view is rendered with the provided parameters and optionally wrapped
+ *    in a layout (default: `base.php`).
+ * 3. The final HTML is returned as an `HtmlResponse` instance.
+ *
+ * ### Example
+ * ```php
+ * class HomeController extends Controller
+ * {
+ *     public function index(Request $request): HtmlResponse
+ *     {
+ *         return $this->view('home.index', ['title' => 'Welcome']);
+ *     }
+ *
+ *     public function about(): HtmlResponse
+ *     {
+ *         return $this->view('pages.about');
+ *     }
+ * }
+ * ```
+ *
+ * ### Customization
+ * - Use `setLayout('layouts/main.php')` to override the layout for the controller.
+ * - Pass an explicit status code to `view()` (e.g., `view('user.create', [...], $req, 422)`).
+ * - The `isAjax()` helper ensures that JSON/XHR requests bypass layout wrapping.
+ *
+ * @see \Ivi\Http\HtmlResponse
+ * @see \Ivi\Core\View\ViewNotFoundException
+ */
+abstract class Controller
 {
-    public $pdo;
+    /** @var string Default layout file (relative to /views directory). */
+    protected string $layout = 'base.php';
+    protected static array $layoutVars = [];
+    protected static array $viewNamespaces = [];
 
-    private $jwt;
-    private $token;
-
-    private ?object $meCache = null;
-
-    public function __construct()
+    /** Définit une variable de layout disponible dans base.php (ex: 'title') */
+    protected function setLayoutVar(string $key, mixed $value): void
     {
-        $this->pdo = Database::getInstance(DB_NAME, DB_HOST, DB_USER, DB_PWD);
-        $this->jwt = new JWT();
-        $this->token = $_COOKIE['token'] ?? null;
+        self::$layoutVars[$key] = $value;
     }
 
-    private function render(string $path, string $layout, ?array $params = null): void
+    /** Raccourci pratique pour le titre de page */
+    protected function setPageTitle(string $title): void
+    {
+        $this->setLayoutVar('title', $title);
+    }
+
+    /**
+     * Render a view file into a full HTML response.
+     *
+     * This method handles:
+     * - Resolving dot-notation view paths (e.g. "user.index" → "views/user/index.php")
+     * - Extracting parameters into local scope
+     * - Wrapping rendered content with a layout (if it exists)
+     * - Automatically skipping layouts for AJAX/JSON requests
+     *
+     * @param string               $path            The dot-notation path to the view file.
+     * @param array<string,mixed>|null $params      Data to be passed into the view.
+     * @param Request|null         $request         The current HTTP request (optional).
+     * @param string|null          $layoutOverride  Custom layout file (optional).
+     * @param int                  $status          HTTP status code for the response.
+     *
+     * @throws ViewNotFoundException if the view file cannot be found.
+     * @return HtmlResponse
+     */
+    protected function render(
+        string $path,
+        ?array $params = null,
+        ?Request $request = null,
+        ?string $layoutOverride = null,
+        int $status = 200
+    ): HtmlResponse {
+        // au lieu de $filePath = $viewsDir . $this->dotToPath($path) . '.php';
+        [$baseForView, $fileRel] = $this->resolveViewPath($path);
+        $filePath = $baseForView . $fileRel;
+
+        if (!is_file($filePath)) {
+            throw new ViewNotFoundException($filePath);
+        }
+
+        $content = $this->capture(function () use ($filePath, $params) {
+            if (is_array($params)) {
+                extract($params, EXTR_SKIP);
+            }
+            require $filePath;
+        });
+
+        if ($this->isAjax($request)) {
+            return new HtmlResponse($content, $status);
+        }
+
+        $layout = $layoutOverride ?? $this->layout;
+        $layoutPath = $this->viewsBasePath() . $layout;
+        if (!is_file($layoutPath)) {
+            return new HtmlResponse($content, $status);
+        }
+
+        $full = $this->capture(function () use ($layoutPath, $content, $params) {
+            if (!empty(self::$layoutVars)) {
+                extract(self::$layoutVars, EXTR_OVERWRITE);
+            }
+
+            if (is_array($params)) {
+                extract($params, EXTR_OVERWRITE);
+            }
+
+            if (!isset($title) || $title === null || $title === '') {
+                $title = 'ivi.php';
+            }
+
+            require $layoutPath;
+        });
+        return new HtmlResponse($full, $status);
+    }
+
+    /**
+     * Shortcut for rendering a view using the default layout.
+     *
+     * Equivalent to calling `render($path, $params, $request, null, $status)`.
+     * Commonly used for controller endpoints that return standard HTML pages.
+     *
+     * @param string               $path     The dot-notation view path.
+     * @param array<string,mixed>|null $params Data passed to the view.
+     * @param Request|null         $request  Optional HTTP request object.
+     * @param int                  $status   HTTP status code.
+     *
+     * @return HtmlResponse
+     */
+    protected function view(
+        string $path,
+        ?array $params = null,
+        ?Request $request = null,
+        int $status = 200
+    ): HtmlResponse {
+        return $this->render($path, $params, $request, null, $status);
+    }
+
+    /**
+     * Change the default layout for subsequent views.
+     *
+     * @param string $layoutFile Relative path of the layout file (from `/views/`).
+     * @return static
+     */
+    protected function setLayout(string $layoutFile): static
+    {
+        $this->layout = $layoutFile;
+        return $this;
+    }
+
+    // --------------------------------------------------------------------
+    // Response Helpers
+    // --------------------------------------------------------------------
+
+    /** Return a raw HTML response. */
+    protected function html(string $html, int $status = 200): HtmlResponse
+    {
+        return new HtmlResponse($html, $status);
+    }
+
+    /** Return a JSON response. */
+    protected function json(mixed $data, int $status = 200): JsonResponse
+    {
+        return new JsonResponse($data, $status);
+    }
+
+    /** Return a plain-text response. */
+    protected function text(string $text, int $status = 200): TextResponse
+    {
+        return new TextResponse($text, $status);
+    }
+
+    /** Return an HTTP redirect response. */
+    protected function redirect(string $url, int $status = 302): RedirectResponse
+    {
+        return new RedirectResponse($url, $status);
+    }
+
+    // --------------------------------------------------------------------
+    // Internal Utilities
+    // --------------------------------------------------------------------
+
+    /**
+     * Detect whether the current request was made via AJAX or expects JSON.
+     *
+     * Used to automatically disable layouts and return raw HTML for XHR requests.
+     *
+     * @param Request|null $request The current request (optional).
+     * @return bool True if AJAX or JSON expected; false otherwise.
+     */
+    protected function isAjax(?Request $request): bool
+    {
+        if ($request) {
+            $xrw = strtolower($request->header('x-requested-with', ''));
+            if ($xrw === 'xmlhttprequest') return true;
+            if ($request->wantsJson()) return true;
+        }
+
+        $xhr = $_SERVER['HTTP_X_REQUESTED_WITH'] ?? '';
+        if (strtolower($xhr) === 'xmlhttprequest') return true;
+
+        $accept = $_SERVER['HTTP_ACCEPT'] ?? '';
+        return str_contains(strtolower($accept), 'application/json');
+    }
+
+    /** Convert dot-notation paths to filesystem paths. */
+    protected function dotToPath(string $path): string
+    {
+        return str_replace('.', DIRECTORY_SEPARATOR, $path);
+    }
+
+    /**
+     * Determine the base directory for all view templates.
+     *
+     * @return string Absolute path to the views directory.
+     */
+    protected function viewsBasePath(): string
+    {
+        if (defined('VIEWS')) {
+            $base = rtrim((string)VIEWS, DIRECTORY_SEPARATOR) . DIRECTORY_SEPARATOR;
+        } else {
+            $base = dirname(__DIR__, 2) . DIRECTORY_SEPARATOR . 'views' . DIRECTORY_SEPARATOR;
+        }
+        return $base;
+    }
+
+    /**
+     * Capture the output buffer of a callback and return its rendered content.
+     *
+     * This is used internally to safely evaluate PHP templates and return their
+     * output as strings without polluting global output buffers.
+     *
+     * @param callable $fn The function to capture output from.
+     * @return string Rendered output as a string.
+     */
+    protected function capture(callable $fn): string
     {
         ob_start();
-
-        $path = str_replace('.', DIRECTORY_SEPARATOR, $path);
-        $filePath = VIEWS . $path . '.php';
-
-        if (!file_exists($filePath)) {
-            http_response_code(404);
-            echo "View not found: $filePath";
-            exit;
-        }
-
-        if (is_array($params)) {
-            extract($params);
-        }
-
-        require $filePath;
-
-        $content = ob_get_clean();
-
-        $isAjax = isset($_SERVER['HTTP_X_REQUESTED_WITH']) &&
-            strtolower($_SERVER['HTTP_X_REQUESTED_WITH']) === 'xmlhttprequest';
-
-        if ($isAjax) {
-            echo $content;
-            return;
-        }
-
-        require VIEWS . $layout;
-    }
-
-    public function redirect(string $url, int $code = 302): void
-    {
-        header("Location: {$url}", true, $code);
-        exit;
-    }
-
-    protected function isAjax(): bool
-    {
-        return isset($_SERVER['HTTP_X_REQUESTED_WITH'])
-            && strtolower($_SERVER['HTTP_X_REQUESTED_WITH']) === 'xmlhttprequest';
-    }
-
-    protected function jsonUnauthorized(string $msg = 'Unauthorized'): void
-    {
-        http_response_code(401);
-        header('Content-Type: application/json; charset=utf-8');
-        echo json_encode(['error' => $msg]);
-        exit;
-    }
-
-    protected function requireRole(string $roleName, $user = null): void
-    {
-        $user ??= $this->getUserEntity();
-        $name = method_exists($user, 'getRoleName') ? $user->getRoleName() : null;
-        if ($name !== $roleName) {
-            $this->jsonUnauthorized('Insufficient role');
-        }
-    }
-
-    protected function requireAnyRole(array $roleNames, $user = null): void
-    {
-        $user ??= $this->getUserEntity();
-        $name = method_exists($user, 'getRoleName') ? $user->getRoleName() : null;
-        $all  = method_exists($user, 'getRoleNames') ? $user->getRoleNames() : [];
-
-        $ok = ($name && in_array($name, $roleNames, true));
-        if (!$ok && $all) {
-            $ok = count(array_intersect($roleNames, $all)) > 0;
-        }
-        if (!$ok) {
-            $this->jsonUnauthorized('Insufficient role');
-        }
-    }
-
-    protected function userHasAnyRole(array $roleNames, $user = null): bool
-    {
-        $user ??= $this->getUserEntity();
-        if (!$user) return false;
-        $name = method_exists($user, 'getRoleName') ? $user->getRoleName() : null;
-        $all  = method_exists($user, 'getRoleNames') ? (array)$user->getRoleNames() : [];
-        return ($name && in_array($name, $roleNames, true)) || ($all && count(array_intersect($roleNames, $all)) > 0);
-    }
-
-    protected function userVal(?object $me, array $getterNames, array $propNames)
-    {
-        if (!$me) return null;
-
-        foreach ($getterNames as $g) {
-            if (method_exists($me, $g)) {
-                try {
-                    return $me->{$g}();
-                } catch (\Throwable $e) {
-                }
-            }
-        }
-        foreach ($propNames as $p) {
-            if (isset($me->{$p})) return $me->{$p};
-        }
-        return null;
-    }
-
-    protected function getCurrentUserOrNull()
-    {
-        if ($this->meCache !== null) return $this->meCache;
-
-        $getter = new GetUserCookie();
-        $user = $getter->getUserEntity();
-
-        return $this->meCache = $user;
-    }
-
-    protected function getUserEntity()
-    {
-        $payload = $this->validateToken();
-        if ($payload) {
-            $userRepository = new UserRepository();
-            return $userRepository->findById((int)$payload['id']);
-        }
-        if ($this->isAjax()) {
-            $this->jsonUnauthorized('Authentication required');
-        }
-        RedirectionHelper::redirect('login');
-        exit;
-    }
-
-    protected function resolveAgencyIdForUser($user): int
-    {
-        $payload = $this->validateToken();
-        if (!empty($payload['agency_id'])) return (int)$payload['agency_id'];
-
-        $uid = (int)$user->getId();
-        $pdo = $this->pdo->getPdo();
-
         try {
-            $stmt = $pdo->prepare("SELECT agency_id FROM agency_users WHERE user_id = :uid LIMIT 1");
-            $stmt->execute([':uid' => $uid]);
-            $aid = (int)($stmt->fetchColumn() ?: 0);
-            if ($aid > 0) return $aid;
-        } catch (\Throwable $e) {
+            $fn();
+        } finally {
+            $out = ob_get_clean();
         }
-
-        try {
-            $stmt = $pdo->prepare("SELECT id FROM vendor_shipping_options WHERE owner_user_id = :uid LIMIT 1");
-            $stmt->execute([':uid' => $uid]);
-            $aid = (int)($stmt->fetchColumn() ?: 0);
-            if ($aid > 0) return $aid;
-        } catch (\Throwable $e) {
-        }
-
-        return 0;
+        return $out ?: '';
     }
 
-    public function getAuthenticatedAdmin(): ?array
+
+    /** Enregistre un namespace de vues, ex: Controller::addViewNamespace('market', '/abs/path/to/views') */
+    public static function addViewNamespace(string $ns, string $path): void
     {
-        $user = $this->getUserEntity();
-        if (!$user) {
-            $this->jsonUnauthorized('Authentication required');
-            return null;
-        }
-
-        $this->requireAnyRole(['admin'], $user);
-
-        try {
-            $db = $this->pdo->getPdo();
-            if ($db instanceof \PDO) {
-                $db->setAttribute(\PDO::ATTR_ERRMODE, \PDO::ERRMODE_EXCEPTION);
-            }
-        } catch (\Throwable $e) {
-            $this->json('Database connection error', 500);
-            return null;
-        }
-
-        return [
-            'user' => $user,
-            'db'   => $db,
-        ];
+        self::$viewNamespaces[$ns] = rtrim($path, DIRECTORY_SEPARATOR) . DIRECTORY_SEPARATOR;
     }
 
-    protected function validateToken()
+    /** Résout un chemin de vue, supporte "ns::path.to.view" et "path.to.view" */
+    protected function resolveViewPath(string $path): array
     {
-        if (isset($this->token) && $this->jwt->isValid($this->token) && !$this->jwt->isExpired($this->token) && $this->jwt->check($this->token, SECRET)) {
-            return $this->jwt->getPayload($this->token);
-        }
-        return null;
-    }
-
-    protected function json($data, $statusCode = 200)
-    {
-        header_remove();
-        header('Content-Type: application/json');
-        header('Cache-Control: no-cache, must-revalidate');
-        header('Expires: 0');
-        http_response_code($statusCode);
-
-        $json = json_encode($data, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
-
-        if ($json === false) {
-            http_response_code(500);
-            echo json_encode(['error' => 'Erreur JSON : ' . json_last_error_msg()]);
-        } else {
-            echo $json;
-        }
-        exit;
-    }
-
-    public function view(string $path, ?array $params = null): void
-    {
-        $this->render($path, 'base.php', $params);
-    }
-
-    public function admin(string $path, ?array $params = null): void
-    {
-        $this->render($path, 'admin.php', $params);
-    }
-
-    public function generic(string $path, ?array $params = null): void
-    {
-        $this->render($path, 'generic.php', $params);
-    }
-
-    public function agency(string $path, ?array $params = null): void
-    {
-        $this->render($path, 'agency.php', $params);
-    }
-
-    public function followView(string $path, ?array $params = null): void
-    {
-        $this->render($path, 'follow.php', $params);
-    }
-
-    public function errors(string $path, ?array $params = null): void
-    {
-        $this->render($path, 'errors.php', $params);
-    }
-
-    public function ViewChat(string $path, ?array $params = null): void
-    {
-        $this->render($path, 'ViewChat.php', $params);
-    }
-
-    public function auth(string $path, ?array $params = null): void
-    {
-        $this->render($path, 'auth.php', $params);
-    }
-    public function shop(string $path, ?array $params = null): void
-    {
-        $this->render($path, 'shop.php', $params);
-    }
-    public function connectToDatabase()
-    {
-        static $conn = null;
-
-        if ($conn !== null) {
-            return $conn;
-        }
-
-        $hostname = DB_HOST;
-        $username = DB_USER;
-        $password = DB_PWD;
-        $dbname   = DB_NAME;
-
-        $conn = mysqli_connect($hostname, $username, $password, $dbname);
-
-        if (!$conn) {
-            echo json_encode(['error' => 'Connection failed: ' . mysqli_connect_error()]);
-            return null;
-        }
-
-        return $conn;
-    }
-
-    public function getFollowersCount($userId)
-    {
-        $userId = (int)$userId;
-        if ($userId <= 0) {
-            return 0;
-        }
-
-        $conn = $this->connectToDatabase();
-        if ($conn === null) {
-            return 0;
-        }
-
-        $sql = "SELECT COUNT(*) as count FROM subscriptions WHERE following_id = ?";
-        $stmt = mysqli_prepare($conn, $sql);
-        if (!$stmt) {
-            return 0;
-        }
-
-        mysqli_stmt_bind_param($stmt, 'i', $userId);
-        mysqli_stmt_execute($stmt);
-        mysqli_stmt_bind_result($stmt, $count);
-        mysqli_stmt_fetch($stmt);
-        mysqli_stmt_close($stmt);
-
-        return (int)$count;
-    }
-
-    public function getFollowingCount($userId)
-    {
-        $userId = (int)$userId;
-        if ($userId <= 0) {
-            return 0;
-        }
-
-        $conn = $this->connectToDatabase();
-        if ($conn === null) {
-            return 0;
-        }
-
-        $sql = "SELECT COUNT(*) as count FROM subscriptions WHERE follower_id = ?";
-        $stmt = mysqli_prepare($conn, $sql);
-        if (!$stmt) {
-            return 0;
-        }
-
-        mysqli_stmt_bind_param($stmt, 'i', $userId);
-        mysqli_stmt_execute($stmt);
-        mysqli_stmt_bind_result($stmt, $count);
-        mysqli_stmt_fetch($stmt);
-        mysqli_stmt_close($stmt);
-
-        return (int)$count;
-    }
-
-    public static function handleImages($files, $directory, $prefix = 'softadastra')
-    {
-        if (!isset($files['tmp_name']) || !is_array($files['tmp_name']) || empty(array_filter($files['tmp_name']))) {
-            throw new Exception("You haven't selected any images to upload.");
-        }
-
-        if (count($files['tmp_name']) > 20) {
-            throw new Exception("You can only upload up to 20 images.");
-        }
-
-        if (!is_dir($directory)) {
-            if (!mkdir($directory, 0777, true) && !is_dir($directory)) {
-                throw new Exception("Unable to create upload directory.");
+        // Syntaxe "market::home"
+        if (strpos($path, '::') !== false) {
+            [$ns, $rel] = explode('::', $path, 2);
+            if (isset(self::$viewNamespaces[$ns])) {
+                $base = self::$viewNamespaces[$ns];
+                $file = str_replace('.', DIRECTORY_SEPARATOR, $rel) . '.php';
+                return [$base, $file];
             }
         }
 
-        $uploadedImages = [];
-        $errors = [];
-
-        foreach ($files['tmp_name'] as $key => $tmp_name) {
-            $fileName = $files['name'][$key] ?? 'Unknown file';
-
-            try {
-                if (empty($tmp_name) || $files['error'][$key] === UPLOAD_ERR_NO_FILE) {
-                    throw new Exception("No file selected.");
-                }
-
-                if ($files['error'][$key] !== UPLOAD_ERR_OK) {
-                    throw new Exception("Upload error for file: $fileName");
-                }
-
-                $file = [
-                    'name' => $fileName,
-                    'type' => $files['type'][$key],
-                    'tmp_name' => $tmp_name,
-                    'error' => $files['error'][$key],
-                    'size' => $files['size'][$key]
-                ];
-
-                $uploadedImage = PhotoHandler::photo($file, $prefix, $directory);
-                $uploadedImages[] = $uploadedImage;
-            } catch (Exception $e) {
-                $message = $e->getMessage();
-                $decoded = json_decode($message, true);
-
-                if (json_last_error() === JSON_ERROR_NONE && isset($decoded['message'])) {
-                    $errors[] = "File '$fileName': " . $decoded['message'];
-                } else {
-                    $errors[] = "File '$fileName': " . $message;
-                }
-
-                continue;
-            }
-        }
-
-        if (!empty($errors)) {
-            foreach ($uploadedImages as $image) {
-                @unlink($directory . '/' . $image);
-            }
-
-            throw new Exception(implode("\n", $errors));
-        }
-
-        return $uploadedImages;
+        // Syntaxe standard "pages.home"
+        $base = $this->viewsBasePath();
+        $file = $this->dotToPath($path) . '.php';
+        return [$base, $file];
     }
 
-    public static function normalizeFile(array $files): array
+    /** Comme resolveViewPath() mais pour les layouts (accepte aussi "ns::layout.php") */
+    protected function resolveLayoutPath(string $layout): array
     {
-        $normalized = [];
-
-        if (is_array($files['name'])) {
-            $count = count($files['name']);
-            for ($i = 0; $i < $count; $i++) {
-                if ($files['name'][$i] && is_uploaded_file($files['tmp_name'][$i])) {
-                    $normalized[] = [
-                        'name' => $files['name'][$i],
-                        'type' => $files['type'][$i],
-                        'tmp_name' => $files['tmp_name'][$i],
-                        'error' => $files['error'][$i],
-                        'size' => $files['size'][$i],
-                    ];
-                }
-            }
-        } else {
-            if ($files['name']) {
-                $normalized[] = $files;
+        if (strpos($layout, '::') !== false) {
+            [$ns, $rel] = explode('::', $layout, 2);
+            if (isset(self::$viewNamespaces[$ns])) {
+                $base = self::$viewNamespaces[$ns];
+                // on autorise soit "layouts/main", soit "layouts/main.php"
+                $rel = str_ends_with($rel, '.php') ? $rel : ($rel . '.php');
+                $file = str_replace('.', DIRECTORY_SEPARATOR, $rel);
+                return [$base, $file];
             }
         }
 
-        return $normalized;
+        $base = $this->viewsBasePath();
+        $file = $layout; // déjà un chemin relatif style "base.php" ou "layouts/main.php"
+        return [$base, $file];
     }
 }
