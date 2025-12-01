@@ -1,6 +1,6 @@
 {
   "name": "iviphp/ivi",
-  "description": "ivi.php — Simple. Modern. Expressive.",
+  "description": "Ivi.php is a fast, lightweight, and modular PHP framework with expressive routing, built-in ORM, caching, and WebSocket support—ideal for modern APIs and SPAs.",
   "type": "project",
   "license": "MIT",
   "authors": [
@@ -22,7 +22,8 @@
     "files": [
       "core/Support/Helpers.php",
       "support/ide-stubs.php",
-      "support/modules_autoload.php"
+      "support/modules_autoload.php",
+      "support/container.php"
     ]
   },
   "bin": [
@@ -34,7 +35,7 @@
     "cloudinary/cloudinary_php": "^2",
     "erusev/parsedown": "^1.7",
     "firebase/php-jwt": "^6.11",
-    "google/apiclient": "^2.0",
+    "google/apiclient": "^2.15",
     "predis/predis": "^3.0",
     "symfony/var-dumper": "^7.0",
     "vlucas/phpdotenv": "^5.6"
