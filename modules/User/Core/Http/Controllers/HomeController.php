@@ -1,25 +1,28 @@
 <?php
+
 namespace Modules\User\Core\Http\Controllers;
 
 use App\Controllers\Controller;
 use Ivi\Http\HtmlResponse;
+use Modules\Auth\Core\Helpers\AuthRedirect;
 
 class HomeController extends Controller
 {
     public function index(): HtmlResponse
     {
-        $title = (string) (cfg(strtolower('User') . '.title', 'Softadastra User') ?: 'Softadastra User');
-        $this->setPageTitle($title);
+        AuthRedirect::redirectIfGuest('/auth/login');
 
-        $message = "Hello from UserController!";
-        $styles  = '<link rel="stylesheet" href="' . asset("assets/css/style.css") . '">';
-        $scripts = '<script src="' . asset("assets/js/script.js") . '" defer></script>';
+        $styles = module_asset('User/Core', 'assets/css/style.css');
+
+        error_log("SPA MODE = " . ($params['spa'] ?? 'NO'));
 
         return $this->view(strtolower('User') . '::home', [
-            'title'   => $title,
-            'message' => $message,
-            'styles'  => $styles,
-            'scripts' => $scripts,
+            'title'    => 'My Account',
+            'styles'   => $styles,
+
+            'spa_scripts' => [
+                module_asset('User/Core', 'assets/js/pageUserHome.js', false),
+            ]
         ]);
     }
 }

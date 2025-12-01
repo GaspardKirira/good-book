@@ -76,4 +76,3 @@ build/
 public/modules/*
 !public/modules/.gitignore
 db.sql
-index.html

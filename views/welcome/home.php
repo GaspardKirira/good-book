@@ -2,80 +2,89 @@
 
 /** views/welcome/home.php — rendu dans base.php */
 ?>
-<?php
-$title = "Good Book — Accueil";
-?>
-
-<main id="app" class="gb-main">
-    <!-- HERO SECTION -->
-    <section class="hero">
-        <div class="gb-container hero-container">
-            <div class="hero-content">
-                <h1>Bienvenue sur <span>Good Book</span></h1>
-                <p>Découvrez et lisez les meilleurs livres numériques en RDC.</p>
-                <a href="<?= url('/explore') ?>" class="gb-btn-gold">Explorer les livres</a>
-            </div>
-            <div class="hero-image">
-                <img src="<?= asset('assets/images/hero-books.jpeg') ?>" alt="Livres numériques">
-            </div>
+<section class="hero py-5 bg-light text-dark">
+    <div class="container text-center">
+        <!-- Badges -->
+        <div class="mb-3 d-flex justify-content-center align-items-center flex-wrap gap-2">
+            <span class="badge bg-primary">Simple</span>
+            <span class="text-muted">•</span>
+            <span class="badge bg-success">Modern</span>
+            <span class="text-muted">•</span>
+            <span class="badge bg-warning text-dark">Expressive</span>
         </div>
-    </section>
 
-    <!-- DISCOVER SECTION -->
-    <section class="discover">
-        <div class="gb-container">
-            <h2>Découvrir</h2>
-            <div class="cards">
-                <div class="card">
-                    <img src="<?= asset('assets/images/book1.jpeg') ?>" alt="Livre 1">
-                    <h3>Roman contemporain</h3>
-                    <p>Explorez des histoires captivantes de nos auteurs locaux.</p>
+        <h1 class="display-4 fw-bold mb-3">Build delightful PHP apps with clarity and speed.</h1>
+        <p class="lead mb-4">
+            ivi.php is a lightweight, modern framework that favors developer joy,
+            expressive APIs, and production-grade performance — without the bloat.
+        </p>
+
+        <div class="mb-4 d-flex justify-content-center gap-3 flex-wrap">
+            <a class="btn btn-lg btn-primary" href="/docs" rel="noopener" data-spa>Get Started</a>
+            <a class="btn btn-lg btn-outline-secondary" href="https://github.com/iviphp/ivi" target="_blank" rel="noopener">View on GitHub</a>
+        </div>
+
+        <div class="d-inline-flex align-items-center bg-light border rounded px-3 py-2 mb-5">
+            <code id="install" class="me-2">composer create-project iviphp/ivi myapp</code>
+            <button class="btn btn-sm btn-outline-primary" data-copy="#install" aria-label="Copy install command">Copy</button>
+        </div>
+
+        <div class="hero-blob position-absolute top-0 start-50 translate-middle opacity-25" aria-hidden="true"></div>
+    </div>
+</section>
+
+<section class="section features py-5">
+    <div class="container">
+        <div class="row g-4">
+            <div class="col-md-4">
+                <div class="card h-100 shadow-sm p-3 text-center">
+                    <div class="fs-1 mb-2">⚙️</div>
+                    <h3 class="h5 fw-bold">Minimal Core</h3>
+                    <p class="mb-0">Clear building blocks: App, Router, Request, Response, Middleware.</p>
                 </div>
-                <div class="card">
-                    <img src="<?= asset('assets/images/book2.jpeg') ?>" alt="Livre 2">
-                    <h3>Science & Technologie</h3>
-                    <p>Plongez dans le monde de l’innovation et du savoir.</p>
-                </div>
-                <div class="card">
-                    <img src="<?= asset('assets/images/book3.jpg') ?>" alt="Livre 3">
-                    <h3>Développement personnel</h3>
-                    <p>Inspirez-vous et améliorez vos compétences.</p>
+            </div>
+            <div class="col-md-4">
+                <div class="card h-100 shadow-sm p-3 text-center">
+                    <div class="fs-1 mb-2">✨</div>
+                    <h3 class="h5 fw-bold">Expressive by Design</h3>
+                    <p class="mb-0">Readable APIs that let your intent shine through.</p>
                 </div>
             </div>
-        </div>
-    </section>
-
-    <!-- POPULAR BOOKS SECTION -->
-    <section class="popular">
-        <div class="gb-container">
-            <h2>Populaires</h2>
-            <div class="cards">
-                <?php for ($i = 1; $i <= 6; $i++): ?>
-                    <div class="card">
-                        <img src="<?= asset("assets/images/popular$i.jpg") ?>" alt="Livre populaire <?= $i ?>">
-                        <h3>Livre populaire <?= $i ?></h3>
-                        <p>Auteur <?= $i ?></p>
-                    </div>
-                <?php endfor; ?>
+            <div class="col-md-4">
+                <div class="card h-100 shadow-sm p-3 text-center">
+                    <div class="fs-1 mb-2">⚡</div>
+                    <h3 class="h5 fw-bold">Performance First</h3>
+                    <p class="mb-0">Lean runtime, zero-nonsense abstractions — built to ship fast.</p>
+                </div>
             </div>
         </div>
-    </section>
+    </div>
+</section>
 
-    <!-- AUTHORS SECTION -->
-    <section class="authors">
-        <div class="gb-container">
-            <h2>Auteurs à découvrir</h2>
-            <div class="cards authors-cards">
-                <?php for ($i = 1; $i <= 4; $i++): ?>
-                    <div class="author-card">
-                        <img src="<?= asset("assets/images/author$i.jpg") ?>" alt="Auteur <?= $i ?>">
-                        <h3>Auteur <?= $i ?></h3>
-                        <p>Spécialité / Genre</p>
-                    </div>
-                <?php endfor; ?>
+<section class="section ecosystem py-5 bg-light">
+    <div class="container text-center">
+        <h2 class="fw-bold mb-2">Ecosystem</h2>
+        <p class="text-muted mb-4">A growing set of tools to help you ship faster.</p>
+
+        <div class="row g-4 justify-content-center">
+            <div class="col-md-4">
+                <a class="card h-100 shadow-sm p-3 text-decoration-none text-dark" href="/router">
+                    <div class="h5 fw-bold">Router</div>
+                    <p class="mb-0 text-muted">Elegant route definitions & middleware.</p>
+                </a>
+            </div>
+            <div class="col-md-4">
+                <a class="card h-100 shadow-sm p-3 text-decoration-none text-dark" href="/orm">
+                    <div class="h5 fw-bold">ORM</div>
+                    <p class="mb-0 text-muted">Clean models, query builder, pagination.</p>
+                </a>
+            </div>
+            <div class="col-md-4">
+                <a class="card h-100 shadow-sm p-3 text-decoration-none text-dark" href="/cli">
+                    <div class="h5 fw-bold">CLI</div>
+                    <p class="mb-0 text-muted">Migrations & dev tooling that feels right.</p>
+                </a>
             </div>
         </div>
-    </section>
-</main>
-
-<?php include base_path('views/partials/footer.php'); ?>
+    </div>
+</section>
